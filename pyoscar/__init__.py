@@ -2,7 +2,7 @@
 #
 # Authors: Tom Kralidis <tomkralidis@gmail.com>
 #
-# Copyright (c) 2024 Tom Kralidis
+# Copyright (c) 2025 Tom Kralidis
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
@@ -27,7 +27,7 @@
 #
 # =================================================================
 
-__version__ = '0.9.dev0'
+__version__ = '0.10.dev0'
 
 from datetime import date
 import json
@@ -222,16 +222,31 @@ class OSCARClient:
         LOGGER.debug(f'Request: {response.url}')
         LOGGER.debug(f'Response: {response.status_code}')
 
+        if any(s in response.text for s in ['error', 'deleted']):
+            # noqa WSI not found via OAPI route, note this only works for primary WSI
+            # Try REST API, note this is much slower
+            LOGGER.warning(f'Falling back to {self.api_url} for {identifier}')
+            request = f'{self.api_url}/wmd/download/{identifier}'
+            response = requests.get(request, headers=self.headers)
+            if response.status_code == 404:
+                return {}
+
         response.raise_for_status()
 
         if format_ == 'XML':
-            response = etree.fromstring(response.content)
+            try:
+                response = etree.fromstring(response.content)
+            except Exception as e:
+                raise e
         else:
             response = response.json()
 
         if summary:
             LOGGER.debug('Generating report summary')
-            return self.get_station_report_summary(response)
+            try:
+                return self.get_station_report_summary(response)
+            except Exception as e:
+                raise e
         else:
             return response
 
